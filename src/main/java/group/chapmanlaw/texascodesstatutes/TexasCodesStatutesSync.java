@@ -45,7 +45,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 
-public class app {
+public class TexasCodesStatutesSync {
 
     private static final URI DEFAULT_METADATA_URI = URI.create("https://statutes.capitol.texas.gov/assets/StatuteCodeDownloads.json");
     private static final List<String> DEFAULT_SOURCE_BASE_CANDIDATES = List.of(
@@ -66,44 +66,60 @@ public class app {
     private static volatile boolean rotatingLogInitialized = false;
 
     public static void main(String[] args) {
+        int exitCode = run(args);
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
+    }
+
+    public static int run(String[] args) {
         initializeRotatingLog();
         try {
-            Config config = parseArgs(args);
-            if (config.help()) {
-                printUsage();
-                return;
-            }
-
-            HttpClient httpClient = HttpClient.newBuilder()
-                    .connectTimeout(CONNECT_TIMEOUT)
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
-
-            ObjectMapper mapper = new ObjectMapper()
-                    .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            WebhookNotifier webhookNotifier = new WebhookNotifier(httpClient, mapper, config.webhookUrl());
-
-            List<CodeDownload> downloads = fetchCodeDownloads(httpClient, mapper, config.metadataUri());
-            if (downloads.isEmpty()) {
-                throw new IOException("No downloadable statute codes were discovered.");
-            }
-
-            String sourceBase = resolveSourceBase(config, httpClient, downloads);
-            try (StorageTarget target = createStorageTarget(config, httpClient)) {
-                target.ensureDirectory("");
-                SyncSummary summary = syncAll(config, httpClient, mapper, target, sourceBase, downloads, webhookNotifier);
-                printSummary(summary, target, sourceBase);
-                if (summary.failed() > 0) {
-                    throw new IOException("Sync completed with " + summary.failed() + " failed code(s).");
-                }
-            }
+            executeSync(args);
+            return 0;
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             System.err.println("Interrupted: " + ex.getMessage());
-            System.exit(1);
+            return 1;
         } catch (Exception ex) {
             System.err.println("Error: " + ex.getMessage());
-            System.exit(1);
+            return 1;
+        }
+    }
+
+    public static void executeSync(String[] args) throws IOException, InterruptedException {
+        Config config = parseArgs(args);
+        executeSync(config);
+    }
+
+    public static void executeSync(Config config) throws IOException, InterruptedException {
+        if (config.help()) {
+            printUsage();
+            return;
+        }
+
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(CONNECT_TIMEOUT)
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+
+        ObjectMapper mapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        WebhookNotifier webhookNotifier = new WebhookNotifier(httpClient, mapper, config.webhookUrl());
+
+        List<CodeDownload> downloads = fetchCodeDownloads(httpClient, mapper, config.metadataUri());
+        if (downloads.isEmpty()) {
+            throw new IOException("No downloadable statute codes were discovered.");
+        }
+
+        String sourceBase = resolveSourceBase(config, httpClient, downloads);
+        try (StorageTarget target = createStorageTarget(config, httpClient)) {
+            target.ensureDirectory("");
+            SyncSummary summary = syncAll(config, httpClient, mapper, target, sourceBase, downloads, webhookNotifier);
+            printSummary(summary, target, sourceBase);
+            if (summary.failed() > 0) {
+                throw new IOException("Sync completed with " + summary.failed() + " failed code(s).");
+            }
         }
     }
 
@@ -111,7 +127,7 @@ public class app {
         if (rotatingLogInitialized) {
             return;
         }
-        synchronized (app.class) {
+        synchronized (TexasCodesStatutesSync.class) {
             if (rotatingLogInitialized) {
                 return;
             }
@@ -800,7 +816,7 @@ public class app {
             return new Config(
                     true,
                     TargetType.LOCAL,
-                    Path.of("data"),
+                    Path.of("texascodesstatutes_data"),
                     DEFAULT_METADATA_URI,
                     null,
                     false,
@@ -823,7 +839,7 @@ public class app {
         flags.addAll(cliFlags);
 
         TargetType targetType = parseTargetType(options.getOrDefault("target", "local"));
-        Path dataDir = Path.of(options.getOrDefault("data-dir", "data")).normalize();
+        Path dataDir = Path.of(options.getOrDefault("data-dir", "texascodesstatutes_data")).normalize();
         URI metadataUri = URI.create(options.getOrDefault("metadata-url", DEFAULT_METADATA_URI.toString()));
         String sourceBaseOverride = trimToNull(options.get("source-base"));
         URI webhookUrl = parseOptionalUri(options.get("webhook-url"), "webhook-url");
@@ -1242,7 +1258,7 @@ public class app {
         System.out.println("Core options:");
         System.out.println("  --target=local|sftp|webdav       Storage target (default: local)");
         System.out.println("  --config=/path/config.properties Load options from a properties file (CLI overrides)");
-        System.out.println("  --data-dir=PATH                  Local output directory (default: data)");
+        System.out.println("  --data-dir=PATH                  Local output directory (default: texascodesstatutes_data)");
         System.out.println("  --metadata-url=URL               Metadata JSON URL");
         System.out.println("  --source-base=URL                Override ZIP source base URL");
         System.out.println("  --webhook-url=URL                Optional POST webhook for file/completion events");
