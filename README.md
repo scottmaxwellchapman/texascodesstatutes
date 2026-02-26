@@ -40,7 +40,7 @@ java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar --help
 ```bash
 java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar \
   --target=local \
-  --data-dir=./data
+  --data-dir=./texascodesstatutes_data
 ```
 
 ### Dry run (no writes)
@@ -54,6 +54,30 @@ java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar --dry-run
 ```bash
 java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar --force
 ```
+
+## Embedding in another Java application
+
+You can import and invoke the sync runner directly without shelling out to the CLI:
+
+```java
+import group.chapmanlaw.texascodesstatutes.TexasCodesStatutesSync;
+
+int exitCode = TexasCodesStatutesSync.run(new String[]{
+    "--target=local",
+    "--data-dir=./texascodesstatutes_data",
+    "--dry-run"
+});
+
+if (exitCode != 0) {
+    throw new IllegalStateException("Sync failed with exit code " + exitCode);
+}
+```
+
+If you prefer exception-based handling, call:
+
+- `TexasCodesStatutesSync.executeSync(String[] args)`
+
+This method throws on failure instead of returning an exit code.
 
 ## Configuration file
 
@@ -131,7 +155,7 @@ java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar \
 For each code, files are written into a code-specific folder and include a marker file:
 
 ```text
-data/
+texascodesstatutes_data/
   penal_code/
     ch_1_general_provisions.docx
     ch_2_burdens_of_proof.docx
@@ -172,7 +196,7 @@ Non-2xx webhook responses are logged as warnings; sync continues.
 
 ## Development notes
 
-- Main entry point: `group.chapmanlaw.texascodesstatutes.app`
+- Main entry point: `group.chapmanlaw.texascodesstatutes.TexasCodesStatutesSync`
 - Build config: `pom.xml`
 - Sample config: `texascodesstatutes.example.properties`
 
