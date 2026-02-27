@@ -107,6 +107,36 @@ public class TexasCodesStatutesSync {
             return;
         }
 
+        if (config.recurringInterval() != null) {
+            runRecurringSync(config);
+            return;
+        }
+
+        executeSingleSync(config);
+    }
+
+    private static void runRecurringSync(Config config) throws InterruptedException {
+        Duration interval = config.recurringInterval();
+        long cycle = 0;
+        while (true) {
+            cycle++;
+            Instant cycleStartedAt = Instant.now();
+            System.out.printf("Starting scheduled sync cycle #%d (%s interval).%n", cycle, interval);
+            try {
+                executeSingleSync(config);
+            } catch (Exception ex) {
+                System.err.println("Scheduled sync cycle #" + cycle + " failed: " + ex.getMessage());
+            }
+
+            long elapsedMillis = Duration.between(cycleStartedAt, Instant.now()).toMillis();
+            long sleepMillis = Math.max(1L, interval.toMillis() - elapsedMillis);
+            System.out.printf("Scheduled sync cycle #%d complete. Sleeping for %d ms.%n", cycle, sleepMillis);
+            Thread.sleep(sleepMillis);
+        }
+    }
+
+    private static void executeSingleSync(Config config) throws IOException, InterruptedException {
+
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -833,6 +863,7 @@ public class TexasCodesStatutesSync {
                     false,
                     null,
                     null,
+                    null,
                     null
             );
         }
@@ -852,6 +883,7 @@ public class TexasCodesStatutesSync {
         Path dataDir = Path.of(options.getOrDefault("data-dir", "texascodesstatutes_data")).normalize();
         URI metadataUri = URI.create(options.getOrDefault("metadata-url", DEFAULT_METADATA_URI.toString()));
         String sourceBaseOverride = trimToNull(options.get("source-base"));
+        Duration recurringInterval = parseOptionalRecurringInterval(options.get("interval"));
         URI webhookUrl = parseOptionalUri(options.get("webhook-url"), "webhook-url");
         boolean force = flags.contains("force");
         boolean dryRun = flags.contains("dry-run");
@@ -894,6 +926,7 @@ public class TexasCodesStatutesSync {
                 force,
                 dryRun,
                 allowPartial,
+                recurringInterval,
                 webhookUrl,
                 sftpConfig,
                 webDavConfig
@@ -907,6 +940,7 @@ public class TexasCodesStatutesSync {
                 "data-dir",
                 "metadata-url",
                 "source-base",
+                "interval",
                 "webhook-url",
                 "sftp-host",
                 "sftp-port",
@@ -1210,6 +1244,31 @@ public class TexasCodesStatutesSync {
         }
     }
 
+    private static Duration parseOptionalRecurringInterval(String raw) {
+        String value = trimToNull(raw);
+        if (value == null) {
+            return null;
+        }
+
+        Duration interval;
+        try {
+            if (value.matches("^\\d+$")) {
+                interval = Duration.ofSeconds(Long.parseLong(value));
+            } else {
+                interval = Duration.parse(value);
+            }
+        } catch (Exception ex) {
+            throw new IllegalArgumentException(
+                    "Invalid --interval value: " + value + " (use seconds like 300 or ISO-8601 like PT5M)"
+            );
+        }
+
+        if (interval.isZero() || interval.isNegative()) {
+            throw new IllegalArgumentException("--interval must be greater than zero.");
+        }
+        return interval;
+    }
+
     private static boolean isZipCorruption(IOException ex) {
         Throwable cursor = ex;
         while (cursor != null) {
@@ -1290,6 +1349,7 @@ public class TexasCodesStatutesSync {
         System.out.println("  --data-dir=PATH                  Local output directory (default: texascodesstatutes_data)");
         System.out.println("  --metadata-url=URL               Metadata JSON URL");
         System.out.println("  --source-base=URL                Override ZIP source base URL");
+        System.out.println("  --interval=VALUE                 Recurring timer interval (seconds or ISO-8601, e.g. 300 or PT5M)");
         System.out.println("  --webhook-url=URL                Optional POST webhook for file/completion events");
         System.out.println("  --force                          Force redownload all sets");
         System.out.println("  --dry-run                        Show what would be downloaded");
@@ -1331,6 +1391,7 @@ public class TexasCodesStatutesSync {
             boolean force,
             boolean dryRun,
             boolean allowPartial,
+            Duration recurringInterval,
             URI webhookUrl,
             SftpConfig sftp,
             WebDavConfig webDav
