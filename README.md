@@ -2,6 +2,8 @@
 
 A Java CLI utility that downloads Texas statute code ZIP archives, extracts their chapter files, and syncs them to local disk, SFTP, or WebDAV.
 
+In addition to one-off runs, the tool can run on a recurring timer in both CLI and embedded usage.
+
 ## What this project does
 
 - Pulls the statute code download index from the Texas Legislature metadata feed.
@@ -71,6 +73,13 @@ int exitCode = TexasCodesStatutesSync.run(new String[]{
 if (exitCode != 0) {
     throw new IllegalStateException("Sync failed with exit code " + exitCode);
 }
+
+// Recurring every 5 minutes (runs until interrupted)
+TexasCodesStatutesSync.run(new String[]{
+    "--target=local",
+    "--data-dir=./texascodesstatutes_data",
+    "--interval=PT5M"
+});
 ```
 
 If you prefer exception-based handling, call:
@@ -111,6 +120,7 @@ Notes:
 - `--metadata-url=URL`
 - `--source-base=URL`
 - `--webhook-url=URL`
+- `--interval=VALUE` (seconds like `300` or ISO-8601 like `PT5M`)
 - `--force`
 - `--dry-run`
 - `--allow-partial`
@@ -208,4 +218,3 @@ Non-2xx webhook responses are logged as warnings; sync continues.
 - Main entry point: `group.chapmanlaw.texascodesstatutes.TexasCodesStatutesSync`
 - Build config: `pom.xml`
 - Sample config: `texascodesstatutes.example.properties`
-
