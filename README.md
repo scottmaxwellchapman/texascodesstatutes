@@ -79,6 +79,13 @@ If you prefer exception-based handling, call:
 
 This method throws on failure instead of returning an exit code.
 
+For embedded apps that need to control config location explicitly, use the overloads that accept a config path:
+
+- `TexasCodesStatutesSync.run(String[] args, Path configPath)`
+- `TexasCodesStatutesSync.executeSync(String[] args, Path configPath)`
+
+These overloads load properties from `configPath` when `--config` is not supplied; `--config` still takes precedence.
+
 ## Configuration file
 
 You can keep settings in a properties file and pass it with `--config=...`.
@@ -86,6 +93,8 @@ You can keep settings in a properties file and pass it with `--config=...`.
 ```bash
 java -jar target/texascodesstatutes-1.0-SNAPSHOT.jar --config=./texascodesstatutes.properties
 ```
+
+If `--config` is omitted, the CLI auto-loads `texascodesstatutes_config.properties` (or `texascodesstatutes_config`) from the current working directory when present.
 
 Use `texascodesstatutes.example.properties` as a template.
 

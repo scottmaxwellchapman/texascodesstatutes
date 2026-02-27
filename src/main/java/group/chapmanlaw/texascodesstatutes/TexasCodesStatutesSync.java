@@ -59,6 +59,7 @@ public class TexasCodesStatutesSync {
     private static final String MARKER_FILE_NAME = ".download_complete.json";
     private static final String LOG_DIRECTORY_NAME = "logs";
     private static final String LOG_FILE_NAME = "texascodesstatutes.log";
+    private static final String DEFAULT_CONFIG_BASENAME = "texascodesstatutes_config";
     private static final long LOG_ROTATION_BYTES = 10L * 1024L * 1024L;
     private static final int LOG_ROTATION_FILES = 5;
     private static final PrintStream ORIGINAL_STDOUT = System.out;
@@ -73,9 +74,13 @@ public class TexasCodesStatutesSync {
     }
 
     public static int run(String[] args) {
+        return run(args, null);
+    }
+
+    public static int run(String[] args, Path configPath) {
         initializeRotatingLog();
         try {
-            executeSync(args);
+            executeSync(args, configPath);
             return 0;
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -88,7 +93,11 @@ public class TexasCodesStatutesSync {
     }
 
     public static void executeSync(String[] args) throws IOException, InterruptedException {
-        Config config = parseArgs(args);
+        executeSync(args, null);
+    }
+
+    public static void executeSync(String[] args, Path configPath) throws IOException, InterruptedException {
+        Config config = parseArgs(args, configPath);
         executeSync(config);
     }
 
@@ -786,7 +795,7 @@ public class TexasCodesStatutesSync {
         };
     }
 
-    private static Config parseArgs(String[] args) {
+    private static Config parseArgs(String[] args, Path defaultConfigPath) {
         Map<String, String> cliOptions = new LinkedHashMap<>();
         Set<String> cliFlags = new LinkedHashSet<>();
 
@@ -828,7 +837,8 @@ public class TexasCodesStatutesSync {
             );
         }
 
-        PropertyOverrides propertyOverrides = loadPropertyOverrides(cliOptions.get("config"));
+        Path resolvedConfigPath = resolveConfigPath(cliOptions.get("config"), defaultConfigPath);
+        PropertyOverrides propertyOverrides = loadPropertyOverrides(resolvedConfigPath);
         validateKnownArgs(propertyOverrides.options().keySet(), propertyOverrides.flags());
 
         Map<String, String> options = new LinkedHashMap<>(propertyOverrides.options());
@@ -949,16 +959,35 @@ public class TexasCodesStatutesSync {
         return trimToNull(System.getenv(envKey));
     }
 
-    private static PropertyOverrides loadPropertyOverrides(String rawConfigPath) {
-        if (rawConfigPath == null) {
-            return PropertyOverrides.empty();
+    private static Path resolveConfigPath(String rawConfigPath, Path defaultConfigPath) {
+        if (rawConfigPath != null) {
+            String cliConfigPath = trimToNull(rawConfigPath);
+            if (cliConfigPath == null) {
+                throw new IllegalArgumentException("--config requires a non-empty path.");
+            }
+            return Path.of(cliConfigPath);
         }
-        String configPath = trimToNull(rawConfigPath);
-        if (configPath == null) {
-            throw new IllegalArgumentException("--config requires a non-empty path.");
+        if (defaultConfigPath != null) {
+            return defaultConfigPath;
         }
 
-        Path path = Path.of(configPath).toAbsolutePath().normalize();
+        Path propertiesPath = Path.of(DEFAULT_CONFIG_BASENAME + ".properties");
+        if (Files.exists(propertiesPath) && !Files.isDirectory(propertiesPath)) {
+            return propertiesPath;
+        }
+        Path barePath = Path.of(DEFAULT_CONFIG_BASENAME);
+        if (Files.exists(barePath) && !Files.isDirectory(barePath)) {
+            return barePath;
+        }
+        return null;
+    }
+
+    private static PropertyOverrides loadPropertyOverrides(Path configPath) {
+        if (configPath == null) {
+            return PropertyOverrides.empty();
+        }
+
+        Path path = configPath.toAbsolutePath().normalize();
         if (!Files.exists(path) || Files.isDirectory(path)) {
             throw new IllegalArgumentException("Config file not found: " + path);
         }
@@ -1257,7 +1286,7 @@ public class TexasCodesStatutesSync {
         System.out.println();
         System.out.println("Core options:");
         System.out.println("  --target=local|sftp|webdav       Storage target (default: local)");
-        System.out.println("  --config=/path/config.properties Load options from a properties file (CLI overrides)");
+        System.out.println("  --config=/path/config.properties Load options from a properties file (CLI overrides; default: texascodesstatutes_config[.properties])");
         System.out.println("  --data-dir=PATH                  Local output directory (default: texascodesstatutes_data)");
         System.out.println("  --metadata-url=URL               Metadata JSON URL");
         System.out.println("  --source-base=URL                Override ZIP source base URL");
